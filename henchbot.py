@@ -17,15 +17,15 @@ class henchBotMyBinder:
         my_binder_prs = requests.get(REPO_API + 'pulls?state=open')
         henchbot_prs = [x for x in my_binder_prs.json() if x['user']['login'] == 'henchbot']
 
+        if len(henchbot_prs) == 0:
+             self.remove_fork()
+
         for repo in repos:
             if self.commit_info[repo]['live'] != self.commit_info[repo]['latest']:
                 existing_pr = self.check_existing_prs(henchbot_prs, repo)
                 if existing_pr == None:
                     continue
                 self.upgrade_repo_commit(existing_pr, repo)
-
-        if len(henchbot_prs) == 0:
-             self.remove_fork()
 
 
     def check_existing_prs(self, henchbot_prs, repo):
@@ -34,7 +34,7 @@ class henchBotMyBinder:
         else:
             for pr in henchbot_prs:
                 if pr['title'].split(':')[0].strip().lower() == repo:
-                    pr_latest = title.split('...')[-1].strip()
+                    pr_latest = pr['title'].split('...')[-1].strip()
                     if pr_latest == self.commit_info[repo]['latest']:
                         return None
                     return {'number': pr['number'], 'prev_latest': pr_latest}
@@ -147,7 +147,7 @@ class henchBotMyBinder:
         os.chdir('..')
         shutil.rmtree('mybinder.org-deploy')
 
-        # create_update_pr(repo, existing_pr)
+        self.create_update_pr(repo, existing_pr)
 
 
     def make_pr_body(self, repo):
@@ -166,7 +166,7 @@ class henchBotMyBinder:
         return body
 
 
-    def create__update_pr(self, repo, existing_pr):
+    def create_update_pr(self, repo, existing_pr):
         body = self.make_pr_body(repo)
 
         pr = {
@@ -179,11 +179,11 @@ class henchBotMyBinder:
 
         if existing_pr:
             res = requests.patch(REPO_API + 'pulls/{}'.format(existing_pr['number']),
-                headers={'Authorization': 'token {}'.format(TOKEN)}, json=data)
+                headers={'Authorization': 'token {}'.format(TOKEN)}, json=pr)
 
         else:
             res = requests.post(REPO_API + 'pulls',
-                headers={'Authorization': 'token {}'.format(TOKEN)}, json=data)
+                headers={'Authorization': 'token {}'.format(TOKEN)}, json=pr)
 
 
     def get_binderhub_live(self):
