@@ -3,6 +3,7 @@ import requests
 import subprocess
 import os
 import shutil
+import sys
 
 REPO_API = 'https://api.github.com/repos/jupyterhub/mybinder.org-deploy/'
 TOKEN = os.environ.get('HENCHBOT_TOKEN')
@@ -16,8 +17,9 @@ class henchBotMyBinder:
     def update_repos(self, repos):
         my_binder_prs = requests.get(REPO_API + 'pulls?state=open')
         henchbot_prs = [x for x in my_binder_prs.json() if x['user']['login'] == 'henchbot']
+        self.check_fork_exists()
 
-        if len(henchbot_prs) == 0:
+        if len(henchbot_prs) == 0 and self.fork_exists:
              self.remove_fork()
 
         for repo in repos:
@@ -25,6 +27,7 @@ class henchBotMyBinder:
                 existing_pr = self.check_existing_prs(henchbot_prs, repo)
                 if existing_pr == None:
                     continue
+
                 self.upgrade_repo_commit(existing_pr, repo)
 
 
@@ -33,12 +36,17 @@ class henchBotMyBinder:
             return False
         else:
             for pr in henchbot_prs:
-                if pr['title'].split(':')[0].strip().lower() == repo:
+                if repo in pr['title'].lower():
                     pr_latest = pr['title'].split('...')[-1].strip()
                     if pr_latest == self.commit_info[repo]['latest']:
                         return None
                     return {'number': pr['number'], 'prev_latest': pr_latest}
             return False
+
+
+    def check_fork_exists(self):
+        res = requests.get('https://api.github.com/users/henchbot/repos')
+        self.fork_exists = bool([x for x in res.json() if x['name'] == 'mybinder.org-deploy'])
 
 
     def remove_fork(self):
@@ -52,12 +60,25 @@ class henchBotMyBinder:
         res = requests.post(REPO_API + 'forks',
             headers={'Authorization': 'token {}'.format(TOKEN)})
 
+
     def clone_fork(self):
         subprocess.check_call(
             ['git', 'clone', 'https://github.com/henchbot/mybinder.org-deploy'])
 
+
+    def delete_old_branch(self, repo):
+        res = requests.get('https://api.github.com/repos/henchbot/mybinder.org-deploy/branches')
+        if repo+'_bump' in [x['name'] for x in res.json()]:
+            subprocess.check_call(
+                ['git', 'push', '--delete', 'origin', repo+'_bump'])
+            subprocess.check_call(
+                ['git', 'branch', '-d', repo+'_bump'])
+
+
     def checkout_branch(self, existing_pr, repo):
         if not existing_pr:
+            if self.fork_exists:  # fork exists for other repo and old branch for this repo
+                self.delete_old_branch()
             subprocess.check_call(
                 ['git', 'checkout', '-b', repo+'_bump'])
         else:
@@ -136,7 +157,7 @@ class henchBotMyBinder:
 
 
     def upgrade_repo_commit(self, existing_pr, repo):
-        if not existing_pr:
+        if not self.fork_exists:
             self.make_fork()
         self.clone_fork()
 
@@ -152,17 +173,19 @@ class henchBotMyBinder:
 
     def make_pr_body(self, repo):
         if repo == 'repo2docker':
-            body = '''
-            This is a repo2docker version bump. See the link below for a diff of new changes:
+            body = '\n'.join(['This is a repo2docker version bump. See the link below for a diff of new changes:\n',
+                              'https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
+                                self.commit_info['repo2docker']['live'], 
+                                self.commit_info['repo2docker']['latest'])
+                              ])
 
-            https://github.com/jupyter/repo2docker/compare/{}...{}
-            '''.format(self.commit_info['repo2docker']['live'], self.commit_info['repo2docker']['latest']).strip()
         elif repo == 'binderhub':
-            body = '''
-            This is a binderhub version bump. See the link below for a diff of new changes:
+            body = '\n'.join(['This is a binderhub version bump. See the link below for a diff of new changes:\n',
+                              'https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
+                                self.commit_info['binderhub']['live'], 
+                                self.commit_info['binderhub']['latest'])
+                              ])
 
-            https://github.com/jupyterhub/binderhub/compare/{}...{}
-            '''.format(self.commit_info['binderhub']['live'], self.commit_info['binderhub']['latest']).strip()
         return body
 
 
