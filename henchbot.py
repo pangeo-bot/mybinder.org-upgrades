@@ -79,6 +79,8 @@ class henchBotMyBinder:
         if not existing_pr:
             if self.fork_exists:  # fork exists for other repo and old branch for this repo
                 self.delete_old_branch()
+                subprocess.check_call(
+                    ['git', 'pull', 'https://github.com/jupyterhub/mybinder.org-deploy.git', 'master'])
             subprocess.check_call(
                 ['git', 'checkout', '-b', repo+'_bump'])
         else:
