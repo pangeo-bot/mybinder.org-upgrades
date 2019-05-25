@@ -21,6 +21,7 @@ class henchBotMyBinder:
 
         if len(henchbot_prs) == 0 and self.fork_exists:
              self.remove_fork()
+             self.fork_exists = False
 
         for repo in repos:
             if self.commit_info[repo]['live'] != self.commit_info[repo]['latest']:
