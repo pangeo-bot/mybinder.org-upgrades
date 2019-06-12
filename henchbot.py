@@ -3,7 +3,7 @@ import requests
 import subprocess
 import os
 import shutil
-import sys
+import time
 
 REPO_API = 'https://api.github.com/repos/jupyterhub/mybinder.org-deploy/'
 TOKEN = os.environ.get('HENCHBOT_TOKEN')
@@ -174,20 +174,37 @@ class henchBotMyBinder:
         self.create_update_pr(repo, existing_pr)
 
 
+    def get_associated_prs(self, compare_url):
+        res = requests.get(compare_url.replace('github.com', 'api.github.com/repos')).json()
+        commit_shas = [x['sha'] for x in res['commits']]
+
+        associated_prs = []
+        for sha in commit_shas[::-1]:
+            res = requests.get('https://api.github.com/search/issues?q=sha:{}'.format(sha)).json()
+            if 'items' in res:
+                for i in res['items']:
+                    formatted = '{} #[{}]({})'.format(i['title'], i['number'], i['url'])
+                    if formatted not in associated_prs:
+                        associated_prs.append(formatted)
+            time.sleep(3)
+
+        return associated_prs
+
+
     def make_pr_body(self, repo):
         if repo == 'repo2docker':
-            body = '\n'.join(['This is a repo2docker version bump. See the link below for a diff of new changes:\n',
-                              'https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
+            compare_url = 'https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
                                 self.commit_info['repo2docker']['live'], 
                                 self.commit_info['repo2docker']['latest'])
-                              ])
+            associated_prs = self.get_associated_prs(compare_url)
+            body = '\n'.join(['This is a repo2docker version bump. See the link below for a diff of new changes:\n', compare_url + ' \n'] + associated_prs)
 
         elif repo == 'binderhub':
-            body = '\n'.join(['This is a binderhub version bump. See the link below for a diff of new changes:\n',
-                              'https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
+            compare_url = 'https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
                                 self.commit_info['binderhub']['live'], 
                                 self.commit_info['binderhub']['latest'])
-                              ])
+            associated_prs = self.get_associated_prs(compare_url)
+            body = '\n'.join(['This is a binderhub version bump. See the link below for a diff of new changes:\n', compare_url + ' \n'] + associated_prs)
 
         return body
 
