@@ -178,7 +178,7 @@ class henchBotMyBinder:
         res = requests.get(compare_url.replace('github.com', 'api.github.com/repos')).json()
         commit_shas = [x['sha'] for x in res['commits']]
 
-        associated_prs = []
+        associated_prs = ['Associated PRs:']
         for sha in commit_shas[::-1]:
             res = requests.get('https://api.github.com/search/issues?q=sha:{}'.format(sha)).json()
             if 'items' in res:
