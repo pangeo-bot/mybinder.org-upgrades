@@ -183,8 +183,9 @@ class henchBotMyBinder:
             res = requests.get('https://api.github.com/search/issues?q=sha:{}'.format(sha)).json()
             if 'items' in res:
                 for i in res['items']:
-                    formatted = '{} #[{}]({})'.format(i['title'], i['number'], i['url'])
-                    if formatted not in associated_prs:
+                    formatted = '- {} [#{}]({})'.format(i['title'], i['number'], i['html_url'])
+                    repo_owner = i['repository_url'].split('/')[-2]
+                    if formatted not in associated_prs and repo_owner.startswith('jupyter'):
                         associated_prs.append(formatted)
             time.sleep(3)
 
