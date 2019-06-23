@@ -26,6 +26,8 @@ Now that we've broken it down a bit, let's write up some Python code. Once we ha
 
 If you don't care about the step-by-step, you can skip to the [final version of the code](https://github.com/henchbot/mybinder.org-upgrades/blob/master/henchbot.py).
 
+In the interest of linear understanding and simplicity, the step-by-step below will not write functions or classes but just list the raw code necessary to carry out the tasks. The final version of the code is one way to refactor it.
+
 ## Step 1: Retrieve current deployed mybinder.org dependency versions
 
 The first step is to see if any changes are necessary in the first place. Fortunately, [@choldgraf](https://github.com/choldgraf) had already made a [script](https://github.com/jupyterhub/mybinder.org-deploy/blob/master/scripts/list_new_commits.py) to do this.
@@ -35,6 +37,7 @@ To find the current live commit SHA for BinderHub in mybinder.org, we simply che
 ```python
 from yaml import safe_load as load
 import requests
+
 url_requirements = "https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml"
 requirements = load(requests.get(url_requirements).text)
 binderhub_dep = [ii for ii in requirements['dependencies'] if ii['name'] == 'binderhub'][0]
