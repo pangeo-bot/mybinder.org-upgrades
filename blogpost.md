@@ -243,7 +243,9 @@ Now that we have a script we can simply execute to create a PR, we want to make 
 
 Given that these aren't super urgent updates that need to be made seconds or minutes after a repository update, we will go for the easier and less comptutationally-expensive option of cron.
 
-If you aren't familiar with cron, it's simply a system program that will run whatever command you want at whatever time or time interval you want. For now, we've decided that we want to execute this script every hour. Since I have a few projects going on, I like to keep the cron jobs in a file:
+If you aren't familiar with cron, it's simply a system program that will run whatever command you want at whatever time or time interval you want. For now, we've decided that we want to execute this script every hour. 
+
+Cron can be run on your local computer (though it would need to be continuously running) or a remote server. I've elected to throw it on my raspberry pi, which is always running. Since I have a few projects going on, I like to keep the cron jobs in a file.
 
 ```
 vim crontab-jobs
