@@ -1,4 +1,4 @@
-# Automating mybinder.org dependency upgrades with `henchbot` in 10 steps
+# Automating mybinder.org dependency upgrades in 10 steps
 
 As both [BinderHub](https://github.com/jupyterhub/binderhub) and [repo2docker](https://github.com/jupyter/repo2docker) continue rapid development as standalone packages, the service of [mybinder.org](https://mybinder.org) continues its own growth in offering a browser-based exploration platform for running Jupyter notebooks in the cloud. Depending on BinderHub and repo2docker for the latest functionality demands that mybinder.org be continuously upgraded to ensure users are getting the best experience. Moreover, to avoid merging in massive updates at irregular intervals, it is desirable to merge updates in frequent intervals of smaller changes in order to more easily identify any breaking changes from the dependency upgrades.
 
