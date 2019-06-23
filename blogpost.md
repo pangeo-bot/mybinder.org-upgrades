@@ -247,8 +247,8 @@ If you aren't familiar with cron, it's simply a system program that will run wha
 
 Cron can be run on your local computer (though it would need to be continuously running) or a remote server. I've elected to throw it on my raspberry pi, which is always running. Since I have a few projects going on, I like to keep the cron jobs in a file.
 
-```
-vim crontab-jobs
+```bash
+$ vim crontab-jobs
 ```
 
 You can define your cron jobs here with the correct sytnax (space-separated). Check out [this site](https://crontab.guru/every-1-hour) for help with the crontab syntax. Since we want to run this every hour, we will set it to run on the 0 minutes, for every hour, every day, every month, every year. We also need to make sure it has the correct environment variable with the GitHub access token, so we'll add that to the command.
@@ -259,14 +259,14 @@ You can define your cron jobs here with the correct sytnax (space-separated). Ch
 
 Now we point our cron to the file we've created to load the jobs.
 
-```
-crontab crontab-jobs
+```bash
+$ crontab crontab-jobs
 ```
 
 To see our active crontab, we can list it:
 
-```
-crontab -l
+```bash
+$ crontab -l
 ```
 
 That's it! At the top of every hour, our bot will check to see if an update needs to be made, and if so, create a PR. To clean up files and handle existing PRs, in addition to some other details, I've written a few other functions. It is also implemented as a class with appropriate methods. You can check out the final code [here](https://github.com/henchbot/mybinder.org-upgrades/blob/master/henchbot.py).
