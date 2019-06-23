@@ -215,7 +215,7 @@ We want the PR to have a nice comment explaining what's happening and linking an
 
 ## Step 8: Make the PR
 
-We can use the GitHub API to make a pull request by calling the `pulls` endpoint with the `title`, `body`, `base`, and `head`. We'll use the nice body we formatted above, call the title the same as the commit message we made with the repo name and the two SHAs, and put the `base` as `master` and the `head` our fork. Then we just make a POST request.
+We can use the GitHub API to make a pull request by calling the `pulls` endpoint with the `title`, `body`, `base`, and `head`. We'll use the nice body we formatted above, call the title the same as the commit message we made with the repo name and the two SHAs, and put the `base` as `master` and the `head` the name of our fork. Then we just make a POST request.
 
 ```python
 		pr = {
@@ -232,27 +232,27 @@ We can use the GitHub API to make a pull request by calling the `pulls` endpoint
 
 ## Step 9: Confirm and merge!
 
-If we checked the mybinder.org PRs, we would now see the automated PR from our account!
+If we check the mybinder.org PRs, we would now see the automated PR from our account!
 
 ## Step 10: Automating the script (cronjob)
 
-Now that we have a script we can simply execute to create a PR, we want to make this as hands-off as possible. Generally we have two options: (1) set this script to be run on as a [cron job](https://en.wikipedia.org/wiki/Cron); (2) have a web app listener that gets pinged whenever a change is made and executes your script as a response.
+Now that we have a script we can simply execute to create a PR, we want to make this as hands-off as possible. Generally we have two options: (1) set this script to be run as a [cron job](https://en.wikipedia.org/wiki/Cron); (2) have a web app listener that gets pinged whenever a change is made and executes your script as a response.
 
-Given that these aren't super urgent updates that need to be made seconds or minutes after a repository update, we will go for the easier and less comptutationally expensive option of cron.
+Given that these aren't super urgent updates that need to be made seconds or minutes after a repository update, we will go for the easier and less comptutationally-expensive option of cron.
 
-If you aren't familiar with cron, it's simply a system program that will run whatever command you want at whatever time or time interval you want. For now, we've decided that we want to execute this script every hour. Since I have a few projects going on, I like to keep the crontab jobs in a file:
+If you aren't familiar with cron, it's simply a system program that will run whatever command you want at whatever time or time interval you want. For now, we've decided that we want to execute this script every hour. Since I have a few projects going on, I like to keep the cron jobs in a file:
 
 ```
 vim crontab-jobs
 ```
 
-You can define your cron jobs here with the correct sytnax (space-separated). Check out [this site](https://crontab.guru/every-1-hour) for help with the crontab syntax. Since we want to run this every hour, we will set it to run on the 0 minutes, for every hour, every day, every month, every year. We also need to make sure it has the correct environment variable with your GitHub token, so we'll add that to the command.
+You can define your cron jobs here with the correct sytnax (space-separated). Check out [this site](https://crontab.guru/every-1-hour) for help with the crontab syntax. Since we want to run this every hour, we will set it to run on the 0 minutes, for every hour, every day, every month, every year. We also need to make sure it has the correct environment variable with the GitHub access token, so we'll add that to the command.
 
 ```
 0 * * * * cd /home/pi/projects/mybinder.org-upgrades && HENCHBOT_TOKEN='XXXXX' /home/pi/miniconda3/bin/python henchbot.py
 ```
 
-Now we point our crontab to the file we've created to load the jobs.
+Now we point our cron to the file we've created to load the jobs.
 
 ```
 crontab crontab-jobs
