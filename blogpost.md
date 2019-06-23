@@ -1,15 +1,15 @@
-# Automating mybinder.org dependency upgrades
+# Automating mybinder.org dependency upgrades with `henchbot` in 10 steps
 
-As both [BinderHub](https://github.com/jupyterhub/binderhub) and [repo2docker](https://github.com/jupyter/repo2docker) continue rapid development as standalone packages, the service of [mybinder.org](https://mybinder.org) continues its own growth in offering a browser-based exploration platform for Jupyter notebooks. Depending on BinderHub and repo2docker for the latest functionality demands that mybinder.org be continuously upgraded. Moreover, to avoid merging in massive updates at irregular intervals, it is desirable to merge updates in frequent intervals of smaller changes in order to more easily identify any breaking changes from the dependencies.
+As both [BinderHub](https://github.com/jupyterhub/binderhub) and [repo2docker](https://github.com/jupyter/repo2docker) continue rapid development as standalone packages, the service of [mybinder.org](https://mybinder.org) continues its own growth in offering a browser-based exploration platform for running Jupyter notebooks in the cloud. Depending on BinderHub and repo2docker for the latest functionality demands that mybinder.org be continuously upgraded to ensure users are getting the best experience. Moreover, to avoid merging in massive updates at irregular intervals, it is desirable to merge updates in frequent intervals of smaller changes in order to more easily identify any breaking changes from the dependency upgrades.
 
-For some time, the mybinder.org community relied on continuous updates from its developers following a process outlined in the "[Site Reliability Guide](https://mybinder-sre.readthedocs.io/en/latest/)". While there are several tasks necessary to simply keep the site running smoothly, one tedious and reptitive task is simply [updating commit SHAs](https://mybinder-sre.readthedocs.io/en/latest/deployment/how.html) for BinderHub and repo2docker whenever changes are made to the main repositories.
+For some time, the mybinder.org community relied on continuous updates from its developers following processes outlined in the "[Site Reliability Guide](https://mybinder-sre.readthedocs.io/en/latest/)". While there are many tasks necessary to keep the site running smoothly, one tedious and reptitive task is simply [updating commit SHAs](https://mybinder-sre.readthedocs.io/en/latest/deployment/how.html) for BinderHub and repo2docker whenever changes are made to the main repositories.
 
-Recently, the team has built a bot to automate this process, and we've decided to highlight its functionality in this blogpost!
+While this process done manually only takes a few minutes, it's prone to human error messing with all the SHAs and the team must remember to regularly do it in the first place. In the interest of automation, a bot was built to relieve this burden, and we've decided to highlight its functionality in this blogpost!
 
 At a high level, this is what we want our bot to do:
 
 - Diff the current commit hash for both repo2docker and BinderHub repos with the deployed versions in the mybinder.org repo. If either or both are different:
-	- Fork the respective repo
+	- Fork the respective depdency repo
 	- Clone the fork locally
 	- Checkout a new branch for the bump
 	- Make the appropriate edit to update the commit hash in the mybinder.org repo
@@ -20,15 +20,17 @@ At a high level, this is what we want our bot to do:
 
 Additionally, it would be ideal if the bot could update an existing PR instead of creating new ones for the version bumps. We'd also like to provide some information in the comments of the PR as to what high level changes were made so we have some idea about what we're merging in.
 
-Now that we've broken it down a bit, let's write up some Python code that can do this. Once we have a functioning script, we can worry about how we will run this in the cloud (cronjob vs. webapp).
+Now that we've broken it down a bit, let's write up some Python code. Once we have a functioning script, we can worry about how we will run this in the cloud (cronjob vs. webapp).
 
 # Writing the bot.
 
-## Step 1: Retrieve current mybinder.org versions
+If you don't care about the step-by-step, you can skip to the [final version of the code](https://github.com/henchbot/mybinder.org-upgrades/blob/master/henchbot.py).
+
+## Step 1: Retrieve current deployed mybinder.org dependency versions
 
 The first step is to see if any changes are necessary in the first place. Fortunately, [@choldgraf](https://github.com/choldgraf) had already made a [script](https://github.com/jupyterhub/mybinder.org-deploy/blob/master/scripts/list_new_commits.py) to do this.
 
-To find the current live commit SHA for BinderHub in mybinder.org, we simply check the [`requirements.yaml`](https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml) file. We'll need Python's `yaml` and `requests` modules to make the GET request and parse the yaml in the response:
+To find the current live commit SHA for BinderHub in mybinder.org, we simply check the [`requirements.yaml`](https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml) file. We'll need Python's `yaml` and `requests` modules to make the GET request and parse the yaml in the response. Note that this is also conveniently the file we'd want to change to upgrade the version.
 
 ```python
 from yaml import safe_load as load
@@ -58,9 +60,10 @@ commit_info = {'repo2docker': {}
 
 commit_info['binderhub']['live'] = bhub_live
 commit_info['repo2docker']['live'] = r2d_live
+print(commit_info)
 ```
 
-## Step 2: Retrieve lastest commits
+## Step 2: Retrieve lastest commits from the dependency repos
 
 When we get the latest commit SHAs for repo2docker and BinderhHub, we need to be careful and make sure we don't automatically grab the latest one from GitHub. The travis build for mybinder.org looks for the repo2docker Docker image from [DockerHub](https://hub.docker.com/v2/repositories/jupyter/repo2docker/tags/), and the latest BinderHub from the [JupyterHub heml chart](https://raw.githubusercontent.com/jupyterhub/helm-chart/gh-pages/index.yaml).
 
@@ -94,153 +97,162 @@ print('repo2docker', commit_info['repo2docker']['live'], commit_info['repo2docke
 
 commit_info['binderhub']['latest'] = bh_master
 print('binderhub', commit_info['binderhub']['live'], commit_info['binderhub']['latest'])
+print(commit_info)
 ```
 
 Great, now we should have all the information we need to determine *whether* an update needs to be made or not, *and* what the new commit SHA should be!
 
-# Step 3: Fork repo
+# Step 3: Fork mybinder.org repo
 
-If we determine an upgrade for the repo is necessary, we need to fork the mybinder.org repository, make the change, commit, push, and make a PR. Let's just make a fork first. Fortunately, the GitHub API has all the functionality we need for all of this:
+If we determine an upgrade for the repo is necessary, we need to fork the mybinder.org [repository](https://github.com/jupyterhub/mybinder.org-deploy), make the change, commit, push, and make a PR. Let's just make a fork first. Fortunately, the GitHub API has all the functionality we need for all of this. You'll need an access [token for the GitHub](https://docs.cachethq.io/docs/github-oauth-token) for your account, since you'll be forking the repo to your account. I've set this as an environment variable so it isn't hard-coded in the script.
 
 ```python
-TOKEN = 'YOUR GITHUB ACCOUNT SECRET TOKEN'
-res = requests.post('https://api.github.com/repos/jupyterhub/mybinder.org-deploy/forks',
-            headers={'Authorization': 'token {}'.format(TOKEN)})
+import os
+
+TOKEN = os.environ.get('HENCHBOT_TOKEN')
+
+for repo in ['binderhub', 'repo2docker']:
+	if commit_info[repo]['live'] != commit_info[repo]['latest']:
+		res = requests.post('https://api.github.com/repos/jupyterhub/mybinder.org-deploy/forks',
+		            headers={'Authorization': 'token {}'.format(TOKEN)})
 ```
 
 Using the API for a post request to the `forks` endpoint will fork the repo to your account. That's it!
 
-
 # Step 4: Clone your fork
 
-You should be quite used to this! We'll use Python's `subprocess` module to run all of our `bash` commands:
+You should be quite used to this! We'll use Python's `subprocess` module to run all of our `bash` commands. Within the for-loop above.
 
 ```python
-subprocess.check_call(['git', 'clone', 'https://github.com/henchbot/mybinder.org-deploy'])
+		subprocess.check_call(['git', 'clone', 'https://github.com/henchbot/mybinder.org-deploy'])
 ```
 
-Let's also `cd` into it and check out a new branch:
+Let's also `cd` into it and check out a new branch.
 
 ```python
-os.chdir('mybinder.org-deploy')
-subprocess.check_call(['git', 'checkout', '-b', 'repo2docker_bump'])
+		os.chdir('mybinder.org-deploy')
+		subprocess.check_call(['git', 'checkout', '-b', '{}_bump'.format(repo)])
 ```
 
 # Step 5: Make the file changes
 
 Now we need to acutally edit the file like we would for an upgrade.
 
-For repo2docker:
+For repo2docker, we edit the same `values.yaml` file we checked above and replace the old SHA ("live") with the "lastest".
 
 ```python
-with open('mybinder/values.yaml', 'r') as f:
-    values_yaml = f.read()
+		if repo == 'repo2docker':
+			with open('mybinder/values.yaml', 'r') as f:
+			    values_yaml = f.read()
 
-updated_yaml = values_yaml.replace(
-    "jupyter/repo2docker:{}".format(
-        commit_info[upgrade]['live']),
-    "jupyter/repo2docker:{}".format(
-        commit_info[upgrade]['latest']))   
+			updated_yaml = values_yaml.replace(
+			    "jupyter/repo2docker:{}".format(
+			        commit_info[upgrade]['live']),
+			    "jupyter/repo2docker:{}".format(
+			        commit_info[upgrade]['latest']))   
 
-fname = 'mybinder/values.yaml'
-with open(fname, 'w') as f:
-    f.write(updated_yaml)
+			fname = 'mybinder/values.yaml'
+			with open(fname, 'w') as f:
+			    f.write(updated_yaml)
 ```
 
-For BinderHub:
+For BinderHub, we edit the same `requirements.yaml` file we checked above and replace the old SHA ("live") with the "latest".
 
 ```python
-with open('mybinder/requirements.yaml', 'r') as f:
-    requirements_yaml = f.read()
+		elif repo == 'binderhub':
+			with open('mybinder/requirements.yaml', 'r') as f:
+			    requirements_yaml = f.read()
 
-updated_yaml = requirements_yaml.replace(
-    "version: 0.2.0-{}".format(commit_info[upgrade]['live']),
-    "version: 0.2.0-{}".format(commit_info[upgrade]['latest']))   
+			updated_yaml = requirements_yaml.replace(
+			    "version: 0.2.0-{}".format(commit_info[upgrade]['live']),
+			    "version: 0.2.0-{}".format(commit_info[upgrade]['latest']))   
 
-fname = 'mybinder/requirements.yaml'
-with open(fname, 'w') as f:
-    f.write(updated_yaml)
+			fname = 'mybinder/requirements.yaml'
+			with open(fname, 'w') as f:
+			    f.write(updated_yaml)
 ```
 
 # Step 6: Stage, commit, push
 
-Now that we've edited the correct files, we can stage and commit the changes:
+Now that we've edited the correct files, we can stage and commit the changes. We'll make the commit message the name of the reo and the compare URL for the commit changes so people can see what has changed between versions for the dependency.
 
 ```python
-# use var fname from editing step
-subprocess.check_call(['git', 'add', fname])
+			# use var fname from editing step
+			subprocess.check_call(['git', 'add', fname])
 
-if repo == 'repo2docker':
-    commit_message = 'repo2docker: https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
-        commit_info['repo2docker']['live'],commit_info['repo2docker']['latest'])
-elif repo == 'binderhub':
-    commit_message = 'binderhub: https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
-        commit_info['binderhub']['live'], commit_info['binderhub']['latest'])
+			if repo == 'repo2docker':
+			    commit_message = 'repo2docker: https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
+			        commit_info['repo2docker']['live'],commit_info['repo2docker']['latest'])
+			elif repo == 'binderhub':
+			    commit_message = 'binderhub: https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
+			        commit_info['binderhub']['live'], commit_info['binderhub']['latest'])
 
-subprocess.check_call(['git', 'config', 'user.name', 'henchbot'])
-subprocess.check_call(['git', 'config', 'user.email', 'henchbot.github@gmail.com'])
-subprocess.check_call(['git', 'commit', '-m', commit_message])
-subprocess.check_call(['git', 'push', 'https://henchbot:{}@github.com/henchbot/mybinder.org-deploy'.format(TOKEN), repo+'_bump'])
+			subprocess.check_call(['git', 'config', 'user.name', 'henchbot'])
+			subprocess.check_call(['git', 'config', 'user.email', 'henchbot.github@gmail.com'])
+			subprocess.check_call(['git', 'commit', '-m', commit_message])
+			subprocess.check_call(['git', 'push', 'https://henchbot:{}@github.com/henchbot/mybinder.org-deploy'.format(TOKEN), repo+'_bump'])
 ```
 
 Awesome, we now have a fully updated fork ready to make a PR to the main repo!
 
 # Step 7: Make the body for the PR
 
-We want the PR to have a nice comment explaining what's happening and linking any helpful information so that the merger knows what they're doing.
+We want the PR to have a nice comment explaining what's happening and linking any helpful information so that the merger knows what they're doing. We'll note that this is a version bump and link the URL diff so it can be clicked to see what has changed.
 
 ```python
-if repo == 'repo2docker':
-    compare_url = 'https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
-                        commit_info['repo2docker']['live'], 
-                        commit_info['repo2docker']['latest'])
-    body = '\n'.join(['This is a repo2docker version bump. See the link below for a diff of new changes:\n', compare_url + ' \n'])
+			if repo == 'repo2docker':
+			    compare_url = 'https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
+			                        commit_info['repo2docker']['live'], 
+			                        commit_info['repo2docker']['latest'])
+			    body = '\n'.join(['This is a repo2docker version bump. See the link below for a diff of new changes:\n', compare_url + ' \n'])
 
-elif repo == 'binderhub':
-    compare_url = 'https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
-                        commit_info['binderhub']['live'], 
-                        commit_info['binderhub']['latest'])
-    body = '\n'.join(['This is a binderhub version bump. See the link below for a diff of new changes:\n', compare_url + ' \n'])
+			elif repo == 'binderhub':
+			    compare_url = 'https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
+			                        commit_info['binderhub']['live'], 
+			                        commit_info['binderhub']['latest'])
+			    body = '\n'.join(['This is a binderhub version bump. See the link below for a diff of new changes:\n', compare_url + ' \n'])
 ```
 
 # Step 8: Make the PR
 
-```python
-pr = {
-    'title': '{}: {}...{}'.format(repo,
-                                  commit_info[repo]['live'],
-                                  commit_info[repo]['latest']),
-    'body': body,
-    'base': 'master',
-    'head': 'henchbot:{}_bump'.format(repo)}
+We can use the GitHub API to make a pull request by calling the `pulls` endpoint with the `title`, `body`, `base`, and `head`. We'll use the nice body we formatted above, call the title the same as the commit message we made with the repo name and the two SHAs, and put the `base` as `master` and the `head` our fork. Then we just make a POST request.
 
-res = requests.post('https://api.github.com/repos/jupyterhub/mybinder.org-deploy/pulls',
-    headers={'Authorization': 'token {}'.format(TOKEN)}, json=pr)
+```python
+			pr = {
+			    'title': '{}: {}...{}'.format(repo,
+			                                  commit_info[repo]['live'],
+			                                  commit_info[repo]['latest']),
+			    'body': body,
+			    'base': 'master',
+			    'head': 'henchbot:{}_bump'.format(repo)}
+
+			res = requests.post('https://api.github.com/repos/jupyterhub/mybinder.org-deploy/pulls',
+			    headers={'Authorization': 'token {}'.format(TOKEN)}, json=pr)
 ```
 
 # Step 9: Confirm and merge!
 
-Check out the mybinder.org PRs, you should now see your automated PR! If it looks good, it can be merged.
+If we checked the mybinder.org PRs, we would now see the automated PR from our account!
 
-# Step 10: Automating your script (cronjob)
+# Step 10: Automating the script (cronjob)
 
-Now that you have a script you can simply execute to create a PR, we want to make this as hands-off as possible. Generally you have two options: (1) set this script to be run on a cronjob; (2) have a webapp listener that gets pinged whenever a change is made and executes your script.
+Now that we have a script we can simply execute to create a PR, we want to make this as hands-off as possible. Generally we have two options: (1) set this script to be run on as a [cron job](https://en.wikipedia.org/wiki/Cron); (2) have a web app listener that gets pinged whenever a change is made and executes your script as a response.
 
-Given that these aren't urgent updates that need to be made seconds or minutes after a repository update, we will go for the easier option of a cronjob.
+Given that these aren't super urgent updates that need to be made seconds or minutes after a repository update, we will go for the easier and less comptutationally expensive option of cron.
 
-If you aren't familiar with cronjob, it's simply a system program that will run whatever command you want at whatever time or time interval you want. For now, we've decided that we want to execute this script every hour. Since I have a few projects going on, I like to keep the crontab jobs in a file:
+If you aren't familiar with cron, it's simply a system program that will run whatever command you want at whatever time or time interval you want. For now, we've decided that we want to execute this script every hour. Since I have a few projects going on, I like to keep the crontab jobs in a file:
 
 ```
 vim crontab-jobs
 ```
 
-You can define your cronjobs here with the correct sytnax (space-separated). Since we want to run this every hour, we will set it to run on the 0 minutes, for every hour, every day, every month, every year. Check out [this site](https://crontab.guru/every-1-hour) for help with the crontab syntax.
+You can define your cron jobs here with the correct sytnax (space-separated). Check out [this site](https://crontab.guru/every-1-hour) for help with the crontab syntax. Since we want to run this every hour, we will set it to run on the 0 minutes, for every hour, every day, every month, every year. We also need to make sure it has the correct environment variable with your GitHub token, so we'll add that to the command.
 
 ```
 0 * * * * cd /home/pi/projects/mybinder.org-upgrades && HENCHBOT_TOKEN='XXXXX' /home/pi/miniconda3/bin/python henchbot.py
 ```
 
-Now we point our crontab to the file we've created:
+Now we point our crontab to the file we've created to load the jobs.
 
 ```
 crontab crontab-jobs
@@ -252,4 +264,4 @@ To see our active crontab, we can list it:
 crontab -l
 ```
 
-That's it!
+That's it! At the top of every hour, our bot will check to see if an update needs to be made, and if so, create a PR. To clean up files and handle existing PRs, in addition to some other details, I've written a few other functions. It is also implemented as a class with appropriate methods. You can check out the final code [here](https://github.com/henchbot/mybinder.org-upgrades/blob/master/henchbot.py).
