@@ -1,8 +1,8 @@
 # Automating mybinder.org dependency upgrades
 
-As both BinderHub and repo2docker continue rapid development as standalone packages, the service of mybinder.org continues its own growth in offering a browser-based exploration platform for Jupyter notebooks. Depending on BinderHub and repo2docker for hte latest functionality demands that mybinder.org be continuously upgraded. Moreover, to avoid merging in massive updates at irregular intervals, it is desirable to merge updates in frequent intervals of smaller changes in order to more easily identify any breaking changes from the depdencies.
+As both [BinderHub](https://github.com/jupyterhub/binderhub) and [repo2docker](https://github.com/jupyter/repo2docker) continue rapid development as standalone packages, the service of [mybinder.org](https://mybinder.org) continues its own growth in offering a browser-based exploration platform for Jupyter notebooks. Depending on BinderHub and repo2docker for the latest functionality demands that mybinder.org be continuously upgraded. Moreover, to avoid merging in massive updates at irregular intervals, it is desirable to merge updates in frequent intervals of smaller changes in order to more easily identify any breaking changes from the dependencies.
 
-For some time, the mybinder.org community relied on continuous updates from its developers following a process outlies in the "[Site Reliability Guide](https://mybinder-sre.readthedocs.io/en/latest/)". While there are several tasks necessary to simply keep the site running smoothly, one tedious and reptitive task is simply [updating commit SHAs](https://mybinder-sre.readthedocs.io/en/latest/deployment/how.html) for BinderHub and repo2docker whenever changes were made to the main repositories.
+For some time, the mybinder.org community relied on continuous updates from its developers following a process outlined in the "[Site Reliability Guide](https://mybinder-sre.readthedocs.io/en/latest/)". While there are several tasks necessary to simply keep the site running smoothly, one tedious and reptitive task is simply [updating commit SHAs](https://mybinder-sre.readthedocs.io/en/latest/deployment/how.html) for BinderHub and repo2docker whenever changes are made to the main repositories.
 
 Recently, the team has built a bot to automate this process, and we've decided to highlight its functionality in this blogpost!
 
@@ -18,7 +18,7 @@ At a high level, this is what we want our bot to do:
 	- Create a PR to the main mybinder.org repo
 	- Remove the locally cloned repo
 
-Additionally, the it would be ideal if the bot could update an existing PR instead of creating new ones for the version bumps. We'd also like to provide some information in the comments of the PR as to what high level changes were made so we have some idea about what we're merging in.
+Additionally, it would be ideal if the bot could update an existing PR instead of creating new ones for the version bumps. We'd also like to provide some information in the comments of the PR as to what high level changes were made so we have some idea about what we're merging in.
 
 Now that we've broken it down a bit, let's write up some Python code that can do this. Once we have a functioning script, we can worry about how we will run this in the cloud (cronjob vs. webapp).
 
@@ -26,17 +26,16 @@ Now that we've broken it down a bit, let's write up some Python code that can do
 
 ## Step 1: Retrieve current mybinder.org versions
 
-As we said above, the first step is to see if any changes are necessary in the first place. Fortunately, [@choldgraf](https://github.com/choldgraf) had already made a [script](https://github.com/jupyterhub/mybinder.org-deploy/blob/master/scripts/list_new_commits.py) to do this.
+The first step is to see if any changes are necessary in the first place. Fortunately, [@choldgraf](https://github.com/choldgraf) had already made a [script](https://github.com/jupyterhub/mybinder.org-deploy/blob/master/scripts/list_new_commits.py) to do this.
 
-To find the current live commit SHA for BinderHub in mybinder.org, we simply check the [`requirements.yaml`](https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml) file:
+To find the current live commit SHA for BinderHub in mybinder.org, we simply check the [`requirements.yaml`](https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml) file. We'll need Python's `yaml` and `requests` modules to make the GET request and parse the yaml in the response:
 
 ```python
 from yaml import safe_load as load
 import requests
 url_requirements = "https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml"
 requirements = load(requests.get(url_requirements).text)
-binderhub_dep = [ii for ii in requirements[
-    'dependencies'] if ii['name'] == 'binderhub'][0]
+binderhub_dep = [ii for ii in requirements['dependencies'] if ii['name'] == 'binderhub'][0]
 bhub_live = binderhub_dep['version'].split('-')[-1]
 print(bhub_live)
 ```
@@ -47,12 +46,11 @@ Similarly, for repo2docker, we check the mybinder [`values.yaml`](https://raw.gi
 url_helm_chart = "https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/values.yaml"
 helm_chart = requests.get(url_helm_chart)
 helm_chart = load(helm_chart.text)
-r2d_live = helm_chart['binderhub']['config'][
-    'BinderHub']['build_image'].split(':')[-1]
+r2d_live = helm_chart['binderhub']['config']['BinderHub']['build_image'].split(':')[-1]
 print(r2d_live)
 ```
 
-Let's store these in a dictionary we can use for later reference:
+Let's store these SHAs in a dictionary we can use for later reference:
 
 ```python
 commit_info = {'repo2docker': {}
@@ -64,7 +62,7 @@ commit_info['repo2docker']['live'] = r2d_live
 
 ## Step 2: Retrieve lastest commits
 
-When we get the latest commit SHAs for repo2docker and BinderhHub, we need to be careful and make sure we don't automatically grab the latest one from GitHub. The travis build for mybinder.org looks for the repo2docker Docker image from Docker Hub, and the latest BinderHub from the jupyterhub heml chart.
+When we get the latest commit SHAs for repo2docker and BinderhHub, we need to be careful and make sure we don't automatically grab the latest one from GitHub. The travis build for mybinder.org looks for the repo2docker Docker image from [DockerHub](https://hub.docker.com/v2/repositories/jupyter/repo2docker/tags/), and the latest BinderHub from the [JupyterHub heml chart](https://raw.githubusercontent.com/jupyterhub/helm-chart/gh-pages/index.yaml).
 
 Let's get the repo2docker version first:
 
@@ -72,10 +70,7 @@ Let's get the repo2docker version first:
 url = "https://hub.docker.com/v2/repositories/jupyter/repo2docker/tags/"
 resp = requests.get(url)
 r2d_master = resp.json()['results'][0]['name']
-
-# add to commit_info dictionary
-commit_info['repo2docker']['latest'] = r2d_master
-print('repo2docker', commit_info['repo2docker']['live'], commit_info['repo2docker']['latest'])
+print(r2d_master)
 ```
 
 Now we can do BinderHub:
@@ -86,13 +81,22 @@ helm_chart_yaml = load(requests.get(url_helm_chart).text)
 
 # sort by date created
 updates_sorted = sorted(helm_chart_yaml['entries']['binderhub'], key=lambda k: k['created'])
+bh_master = updates_sorted[-1]['version'].split('-')[-1]
+print(bh_master)
+```
 
+Let's add these to our dictionary too:
+
+```python
 # add to commit_info dictionary
-commit_info['binderhub']['latest'] = updates_sorted[-1]['version'].split('-')[-1]
+commit_info['repo2docker']['latest'] = r2d_master
+print('repo2docker', commit_info['repo2docker']['live'], commit_info['repo2docker']['latest'])
+
+commit_info['binderhub']['latest'] = bh_master
 print('binderhub', commit_info['binderhub']['live'], commit_info['binderhub']['latest'])
 ```
 
-Great, now we should have all the information we need to determine *whether* and update needs to be made or now, *and* what the new commit SHA should be!
+Great, now we should have all the information we need to determine *whether* an update needs to be made or not, *and* what the new commit SHA should be!
 
 # Step 3: Fork repo
 
@@ -168,10 +172,10 @@ subprocess.check_call(['git', 'add', fname])
 
 if repo == 'repo2docker':
     commit_message = 'repo2docker: https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
-        self.commit_info['repo2docker']['live'],commit_info['repo2docker']['latest'])
+        commit_info['repo2docker']['live'],commit_info['repo2docker']['latest'])
 elif repo == 'binderhub':
     commit_message = 'binderhub: https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
-        self.commit_info['binderhub']['live'], commit_info['binderhub']['latest'])
+        commit_info['binderhub']['live'], commit_info['binderhub']['latest'])
 
 subprocess.check_call(['git', 'config', 'user.name', 'henchbot'])
 subprocess.check_call(['git', 'config', 'user.email', 'henchbot.github@gmail.com'])
