@@ -91,7 +91,7 @@ class henchBotMyBinder:
 
 
     def edit_repo2docker_files(self, upgrade, existing_pr):
-        with open('mybinder/values.yaml', 'r') as f:
+        with open('mybinder/values.yaml', 'r', encoding='utf8') as f:
             values_yaml = f.read()
 
         if not existing_pr:
@@ -115,7 +115,7 @@ class henchBotMyBinder:
 
 
     def edit_binderhub_files(self, upgrade, existing_pr):
-        with open('mybinder/requirements.yaml', 'r') as f:
+        with open('mybinder/requirements.yaml', 'r', encoding='utf8') as f:
             requirements_yaml = f.read()
 
         if not existing_pr:
