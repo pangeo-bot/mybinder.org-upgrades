@@ -108,7 +108,7 @@ class henchBotMyBinder:
                     self.commit_info[upgrade]['latest']))   
 
         fname = 'mybinder/values.yaml'
-        with open(fname, 'w') as f:
+        with open(fname, 'w', encoding='utf8') as f:
             f.write(updated_yaml)
 
         return [fname]
@@ -128,7 +128,7 @@ class henchBotMyBinder:
                 "version: 0.2.0-{}".format(self.commit_info[upgrade]['latest']))    
 
         fname = 'mybinder/requirements.yaml'
-        with open(fname, 'w') as f:
+        with open(fname, 'w', encoding='utf8') as f:
             f.write(updated_yaml)
 
         return [fname]
