@@ -178,7 +178,7 @@ class henchBotMyBinder:
     def get_associated_prs(self, compare_url):
         repo_api = compare_url.replace('github.com', 'api.github.com/repos')
         pr_api = repo_api.split('/compare/')[0] + '/pulls/'
-        res = requests.get(compare_url.replace(repo_api)).json()
+        res = requests.get(repo_api).json()
         commit_shas = [x['sha'] for x in res['commits']]
 
         associated_prs = ['Associated PRs:']
