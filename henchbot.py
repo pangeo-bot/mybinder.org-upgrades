@@ -55,6 +55,7 @@ class henchBotMyBinder:
             headers={
                 'Authorization': 'token {}'.format(TOKEN)})
         self.fork_exists = False
+        time.sleep(5)
 
 
     def make_fork(self):
