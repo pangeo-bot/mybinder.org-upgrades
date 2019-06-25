@@ -188,7 +188,7 @@ class henchBotMyBinder:
                 for i in res['items']:
                     formatted = '- {} [#{}]({})'.format(i['title'], i['number'], i['html_url'])
                     repo_owner = i['repository_url'].split('/')[-2]
-                    merged_at = requests.get(pr_api + i['number']).json()['merged_at']
+                    merged_at = requests.get(pr_api + str(i['number'])).json()['merged_at']
                     if formatted not in associated_prs and repo_owner.startswith('jupyter') and merged_at:
                         associated_prs.append(formatted)
             time.sleep(3)
