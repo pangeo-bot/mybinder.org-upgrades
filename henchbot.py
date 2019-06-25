@@ -175,7 +175,9 @@ class henchBotMyBinder:
 
 
     def get_associated_prs(self, compare_url):
-        res = requests.get(compare_url.replace('github.com', 'api.github.com/repos')).json()
+    	repo_api = 'github.com', 'api.github.com/repos'
+    	pr_api = repo_api.split('/compare/')[0] + '/pulls/'
+        res = requests.get(compare_url.replace(repo_api)).json()
         commit_shas = [x['sha'] for x in res['commits']]
 
         associated_prs = ['Associated PRs:']
@@ -185,7 +187,8 @@ class henchBotMyBinder:
                 for i in res['items']:
                     formatted = '- {} [#{}]({})'.format(i['title'], i['number'], i['html_url'])
                     repo_owner = i['repository_url'].split('/')[-2]
-                    if formatted not in associated_prs and repo_owner.startswith('jupyter'):
+                    merged_at = requests.get(pr_api + i['number']).json()['merged_at']
+                    if formatted not in associated_prs and repo_owner.startswith('jupyter') and merged_at:
                         associated_prs.append(formatted)
             time.sleep(3)
 
