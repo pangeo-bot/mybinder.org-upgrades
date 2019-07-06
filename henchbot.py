@@ -10,11 +10,24 @@ TOKEN = os.environ.get('HENCHBOT_TOKEN')
 
 
 class henchBotMyBinder:
+    '''
+    Class for a bot that determines whether an upgrade is necessary
+    for mybinder.org dependencies on repo2docker and BinderHub.
+    If an upgrade is needed, it will fork the main mybinder.org repo,
+    update the SHA and create a PR.
+    '''
     def __init__(self):
+        '''
+        Start by getting the latest commits to repo2docker
+        and BinderHub, and the live SHAs in mybinder.org
+        '''
         self.get_new_commits()
 
 
     def update_repos(self, repos):
+        '''
+        Main method to check/create upgrades
+        '''
         my_binder_prs = requests.get(REPO_API + 'pulls?state=open')
         henchbot_prs = [x for x in my_binder_prs.json() if x['user']['login'] == 'henchbot']
         self.check_fork_exists()
@@ -32,6 +45,9 @@ class henchBotMyBinder:
 
 
     def check_existing_prs(self, henchbot_prs, repo):
+        '''
+        Check mybinder.org for existing henchbot PRs
+        '''
         if not henchbot_prs:
             return False
         else:
@@ -45,11 +61,17 @@ class henchBotMyBinder:
 
 
     def check_fork_exists(self):
+        '''
+        Check if a fork exists for henchbot already
+        '''
         res = requests.get('https://api.github.com/users/henchbot/repos')
         self.fork_exists = bool([x for x in res.json() if x['name'] == 'mybinder.org-deploy'])
 
 
     def remove_fork(self):
+        '''
+        Remove a henchbot fork of mybinder.org
+        '''
         res = requests.delete(
             'https://api.github.com/repos/henchbot/mybinder.org-deploy',
             headers={
@@ -59,16 +81,25 @@ class henchBotMyBinder:
 
 
     def make_fork(self):
+        '''
+        Make a fork of the mybinder.org repo to henchbot
+        '''
         res = requests.post(REPO_API + 'forks',
             headers={'Authorization': 'token {}'.format(TOKEN)})
 
 
     def clone_fork(self):
+        '''
+        Clone henchbot's mybinder.org fork
+        '''
         subprocess.check_call(
             ['git', 'clone', 'https://github.com/henchbot/mybinder.org-deploy'])
 
 
     def delete_old_branch(self, repo):
+        '''
+        Delete an old branch in the henchbot fork (if it was merged)
+        '''
         res = requests.get('https://api.github.com/repos/henchbot/mybinder.org-deploy/branches')
         if repo+'_bump' in [x['name'] for x in res.json()]:
             subprocess.check_call(
@@ -78,6 +109,9 @@ class henchBotMyBinder:
 
 
     def checkout_branch(self, existing_pr, repo):
+        '''
+        Checkout branch for the bump
+        '''
         if not existing_pr:
             if self.fork_exists:  # fork exists for other repo and old branch for this repo
                 self.delete_old_branch()
@@ -91,6 +125,9 @@ class henchBotMyBinder:
 
 
     def edit_repo2docker_files(self, upgrade, existing_pr):
+        '''
+        Update the SHA to latest for r2d
+        '''
         with open('mybinder/values.yaml', 'r', encoding='utf8') as f:
             values_yaml = f.read()
 
@@ -115,6 +152,9 @@ class henchBotMyBinder:
 
 
     def edit_binderhub_files(self, upgrade, existing_pr):
+        '''
+        Update the SHA to latest for bhub
+        '''
         with open('mybinder/requirements.yaml', 'r', encoding='utf8') as f:
             requirements_yaml = f.read()
 
@@ -135,7 +175,9 @@ class henchBotMyBinder:
 
 
     def edit_files(self, upgrade, existing_pr):
-
+        '''
+        Controlling method to update file for the repo
+        '''
         if upgrade == 'repo2docker':
             return self.edit_repo2docker_files(upgrade, existing_pr)
 
@@ -144,6 +186,9 @@ class henchBotMyBinder:
 
 
     def add_commit_push(self, files_changed, repo):
+        '''
+        After making change, add, commit and push to fork
+        '''
         for f in files_changed:
             subprocess.check_call(['git', 'add', f])
 
@@ -161,6 +206,9 @@ class henchBotMyBinder:
 
 
     def upgrade_repo_commit(self, existing_pr, repo):
+        '''
+        Main controlling method for the update
+        '''
         if not self.fork_exists:
             self.make_fork()
         self.clone_fork()
@@ -176,6 +224,9 @@ class henchBotMyBinder:
 
 
     def get_associated_prs(self, compare_url):
+        '''
+        Gets all PRs from dependency repo associated with the upgrade
+        '''
         repo_api = compare_url.replace('github.com', 'api.github.com/repos')
         pr_api = repo_api.split('/compare/')[0] + '/pulls/'
         res = requests.get(repo_api).json()
@@ -200,6 +251,9 @@ class henchBotMyBinder:
 
 
     def make_pr_body(self, repo):
+        '''
+        Formats a text body for the PR
+        '''
         if repo == 'repo2docker':
             compare_url = 'https://github.com/jupyter/repo2docker/compare/{}...{}'.format(
                                 self.commit_info['repo2docker']['live'], 
@@ -218,6 +272,9 @@ class henchBotMyBinder:
 
 
     def create_update_pr(self, repo, existing_pr):
+        '''
+        Makes the PR from all components
+        '''
         body = self.make_pr_body(repo)
 
         pr = {
@@ -238,6 +295,9 @@ class henchBotMyBinder:
 
 
     def get_binderhub_live(self):
+        '''
+        Get the live BinderHub SHA from mybinder.org
+        '''
         # Load master requirements
         url_requirements = "https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml"
         requirements = load(requests.get(url_requirements).text)
@@ -248,6 +308,9 @@ class henchBotMyBinder:
 
 
     def get_jupyterhub_live(self):
+        '''
+        Get the live JupyterHub SHA from mybinder.org
+        '''
         url_binderhub_requirements = "https://raw.githubusercontent.com/jupyterhub/binderhub/{}/helm-chart/binderhub/requirements.yaml".format(
             self.commit_info['binderhub']['live'])
         requirements = load(requests.get(url_binderhub_requirements).text)
@@ -258,6 +321,9 @@ class henchBotMyBinder:
 
 
     def get_repo2docker_live(self):
+        '''
+        Get the live r2d SHA from mybinder.org
+        '''
         # Load master repo2docker
         url_helm_chart = "https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/values.yaml"
         helm_chart = requests.get(url_helm_chart)
@@ -268,6 +334,9 @@ class henchBotMyBinder:
 
 
     def get_repo2docker_latest(self):
+        '''
+        Get the latest r2d SHA from DockerHub
+        '''
         # Load latest r2d commit from dockerhub
         url = "https://hub.docker.com/v2/repositories/jupyter/repo2docker/tags/"
         resp = requests.get(url)
@@ -277,6 +346,9 @@ class henchBotMyBinder:
 
 
     def get_bhub_jhub_latest(self):
+        '''
+        Get the latest bhub SHA from the helm chart
+        '''
         # Load latest binderhub and jupyterhub commits
         url_helm_chart = 'https://raw.githubusercontent.com/jupyterhub/helm-chart/gh-pages/index.yaml'
         helm_chart_yaml = load(requests.get(url_helm_chart).text)
@@ -290,6 +362,9 @@ class henchBotMyBinder:
 
 
     def get_new_commits(self):
+        '''
+        Main controlling method to get commit SHAs
+        '''
         self.commit_info = {'binderhub': {},
                        'repo2docker': {},
                        'jupyterhub': {}}
