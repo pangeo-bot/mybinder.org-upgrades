@@ -18,13 +18,21 @@ At a high level, this is what we want our bot to do:
 
 Additionally, it would be ideal if the bot could update an existing PR instead of creating new ones for the version bumps. We'd also like to provide some information in the comments of the PR as to what high level changes were made so we have some idea about what we're merging in.
 
+Here's what we're aiming for:
+
+The PR body:
+![](https://i.imgur.com/DEcogdu.png)
+
+The PR diff:
+![](https://i.imgur.com/K9Le5ig.png)
+
 Now that we've broken it down a bit, let's write up some Python code. Once we have a functioning script, we can worry about how we will run this in the cloud (cron job vs. web app).
 
 # Writing the bot
 
 If you don't care about the step-by-step, you can skip to the [final version of the code](https://github.com/henchbot/mybinder.org-upgrades/blob/master/henchbot.py).
 
-In the interest of linear understanding and simplicity, the step-by-step below will not write functions or classes but just list the raw code necessary to carry out the tasks. The final version of the code is one way to refactor it.
+In the interest of linear understanding and simplicity for a tutorial, the step-by-step below will not write functions or classes but just list the raw code necessary to carry out the tasks. The final version of the code linked above is one way to refactor it.
 
 ## Step 1: Retrieve current deployed mybinder.org dependency versions
 
@@ -66,7 +74,7 @@ print(commit_info)
 
 ## Step 2: Retrieve lastest commits from the dependency repos
 
-When we get the latest commit SHAs for repo2docker and BinderhHub, we need to be careful and make sure we don't automatically grab the latest one from GitHub. The travis build for mybinder.org looks for the repo2docker Docker image from [DockerHub](https://hub.docker.com/v2/repositories/jupyter/repo2docker/tags/), and the latest BinderHub from the [JupyterHub helm chart](https://raw.githubusercontent.com/jupyterhub/helm-chart/gh-pages/index.yaml).
+When we get the latest commit SHAs for repo2docker and BinderHub, we need to be careful and make sure we don't automatically grab the latest one from GitHub. The travis build for mybinder.org looks for the repo2docker Docker image from [DockerHub](https://hub.docker.com/v2/repositories/jupyter/repo2docker/tags/), and the latest BinderHub from the [JupyterHub helm chart](https://raw.githubusercontent.com/jupyterhub/helm-chart/gh-pages/index.yaml).
 
 Let's get the repo2docker version first:
 
@@ -105,7 +113,11 @@ Great, now we should have all the information we need to determine *whether* an 
 
 ## Step 3: Fork mybinder.org repo
 
-If we determine an upgrade for the repo is necessary, we need to fork the mybinder.org [repository](https://github.com/jupyterhub/mybinder.org-deploy), make the change, commit, push, and make a PR. Fortunately, the GitHub API has all the functionality we need for all of this. Let's just make a fork first. You'll need an access [token for GitHub](https://docs.cachethq.io/docs/github-oauth-token) for your account, since you'll be forking the repo to your account. I've set this as an environment variable so it isn't hard-coded in the script.
+If we determine an upgrade for the repo is necessary, we need to fork the mybinder.org [repository](https://github.com/jupyterhub/mybinder.org-deploy), make the change, commit, push, and make a PR. Fortunately, the GitHub API has all the functionality we need! Let's just make a fork first.
+
+If you have permissions to a bunch of repos and organizations on GitHub, you may want to [create a new account or organization](https://help.github.com/en/articles/signing-up-for-a-new-github-account) so that you don't accidentally start automating git commands through an account that has write access to so much, especially while developing and testing the bot. I created the [henchbot](https://github.com/henchbot) account for this.
+
+Once you know which account you want to be making the PRs with, you'll need to [create a personal access token](https://help.github.com/en/articles/creating-a-personal-access-token-for-the-command-line) from within that account. I've set this as an environment variable so it isn't hard-coded in the script.
 
 ```python
 import os
@@ -122,7 +134,7 @@ Using the API for a post request to the `forks` endpoint will fork the repo to y
 
 ## Step 4: Clone your fork
 
-You should be quite used to this! We'll use Python's `subprocess` module to run all of our `bash` commands. Within the for-loop above.
+You should be quite used to this! We'll use Python's `subprocess` module to run all of our `bash` commands. We'll need to run these within the for-loop above.
 
 ```python
 		subprocess.check_call(['git', 'clone', 'https://github.com/henchbot/mybinder.org-deploy'])
@@ -175,7 +187,7 @@ For BinderHub, we edit the same `requirements.yaml` file we checked above and re
 
 ## Step 6: Stage, commit, push
 
-Now that we've edited the correct files, we can stage and commit the changes. We'll make the commit message the name of the reo and the compare URL for the commit changes so people can see what has changed between versions for the dependency.
+Now that we've edited the correct files, we can stage and commit the changes. We'll make the commit message the name of the repo and the compare URL for the commit changes so people can see what has changed between versions for the dependency.
 
 ```python
 		# use var fname from editing step
@@ -216,7 +228,7 @@ We want the PR to have a nice comment explaining what's happening and linking an
 
 ## Step 8: Make the PR
 
-We can use the GitHub API to make a pull request by calling the `pulls` endpoint with the `title`, `body`, `base`, and `head`. We'll use the nice body we formatted above, call the title the same as the commit message we made with the repo name and the two SHAs, and put the `base` as `master` and the `head` the name of our fork. Then we just make a POST request.
+We can use the GitHub API to make a pull request by calling the `pulls` endpoint with the `title`, `body`, `base`, and `head`. We'll use the nice body we formatted above, call the title the same as the commit message we made with the repo name and the two SHAs, and put the `base` as `master` and the `head` the name of our fork. Then we just make a POST request to the `pulls` endpoint of the main repo.
 
 ```python
 		pr = {
@@ -233,11 +245,11 @@ We can use the GitHub API to make a pull request by calling the `pulls` endpoint
 
 ## Step 9: Confirm and merge!
 
-If we check the mybinder.org PRs, we would now see the automated PR from our account!
+If we check the [mybinder.org PRs](https://github.com/jupyterhub/mybinder.org-deploy/pulls), we would now see the automated PR from our account!
 
-## Step 10: Automating the script (cronjob)
+## Step 10: Automating the script (cron)
 
-Now that we have a script we can simply execute to create a PR, we want to make this as hands-off as possible. Generally we have two options: (1) set this script to be run as a [cron job](https://en.wikipedia.org/wiki/Cron); (2) have a web app listener that gets pinged whenever a change is made and executes your script as a response.
+Now that we have a script we can simply execute to create a PR (`$ python henchbot.py`), we want to make this as hands-off as possible. Generally we have two options: (1) set this script to be run as a [cron job](https://en.wikipedia.org/wiki/Cron); (2) have a web app listener that gets pinged whenever a change is made and executes your script as a reaction to the ping.
 
 Given that these aren't super urgent updates that need to be made seconds or minutes after a repository update, we will go for the easier and less comptutationally-expensive option of cron.
 
@@ -249,7 +261,7 @@ Cron can be run on your local computer (though it would need to be continuously 
 $ vim crontab-jobs
 ```
 
-You can define your cron jobs here with the correct sytnax (space-separated). Check out [this site](https://crontab.guru/every-1-hour) for help with the crontab syntax. Since we want to run this every hour, we will set it to run on the 0 minutes, for every hour, every day, every month, every year. We also need to make sure it has the correct environment variable with the GitHub access token, so we'll add that to the command.
+You can define your cron jobs here with the correct syntax (space-separated). Check out [this site](https://crontab.guru/every-1-hour) for help with the crontab syntax. Since we want to run this every hour, we will set it to run on the 0 minutes, for every hour, every day, every month, every year. We also need to make sure it has the correct environment variable with the GitHub personal access token we created, so we'll add that to the command.
 
 ```
 0 * * * * cd /home/pi/projects/mybinder.org-upgrades && HENCHBOT_TOKEN='XXXXX' /home/pi/miniconda3/bin/python henchbot.py
