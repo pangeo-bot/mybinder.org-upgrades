@@ -63,7 +63,6 @@ class henchBotMyBinder:
             return False
 
 
-    # TODO - check what must be changed here
     def check_fork_exists(self):
         '''
         Check if a fork exists for henchbot already
@@ -72,7 +71,6 @@ class henchBotMyBinder:
         self.fork_exists = bool([x for x in res.json() if x['name'] == 'pangeo-binder'])
 
 
-    # TODO - check what must be changed here
     def remove_fork(self):
         '''
         Remove a henchbot fork of pangeo-binder
@@ -93,7 +91,6 @@ class henchBotMyBinder:
             headers={'Authorization': 'token {}'.format(TOKEN)})
 
 
-    # TODO - check what must be changed here
     def clone_fork(self):
         '''
         Clone henchbot's pangeo-binder fork
@@ -102,7 +99,6 @@ class henchBotMyBinder:
             ['git', 'clone', 'https://github.com/pangeo-bot/pangeo-binder'])
 
         
-    # TODO - check what must be changed here
     def delete_old_branch(self, repo):
         '''
         Delete an old branch in the henchbot fork (if it was merged)
@@ -115,7 +111,6 @@ class henchBotMyBinder:
                 ['git', 'branch', '-d', repo + '_bump'])
             
             
-    # TODO - check what must be changed here
     def checkout_branch(self, existing_pr, repo):
         '''
         Checkout branch for the bump
@@ -320,7 +315,6 @@ class henchBotMyBinder:
         Get the live JupyterHub SHA from pangeo-binder
         '''
         url_binderhub_requirements = "https://raw.githubusercontent.com/pangeo-data/helm-chart/master/pangeo/requirements.yaml"
-        #.format(self.commit_info['binderhub']['live'])
         print(url_binderhub_requirements)
         requirements = load(requests.get(url_binderhub_requirements).text)
         jupyterhub_dep = [ii for ii in requirements[
