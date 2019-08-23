@@ -5,21 +5,24 @@ import os
 import shutil
 import time
 
-REPO_API = 'https://api.github.com/repos/jupyterhub/mybinder.org-deploy/'
-TOKEN = os.environ.get('HENCHBOT_TOKEN')
+REPO_API = 'https://api.github.com/repos/pangeo-data/pangeo-binder/'
+TOKEN = os.environ.get('PANGEOBOT_TOKEN')
+
+session = requests.Session()
+session.auth = ('pangeo-bot', TOKEN)
 
 
 class henchBotMyBinder:
     '''
     Class for a bot that determines whether an upgrade is necessary
-    for mybinder.org dependencies on repo2docker and BinderHub.
-    If an upgrade is needed, it will fork the main mybinder.org repo,
-    update the SHA and create a PR.
+    for pangeo-binder dependencies on repo2docker and BinderHub.
+    If an upgrade is needed, it will fork the (staging/prod??)
+    pangeo-binder repo, update the SHA and create a PR.
     '''
     def __init__(self):
         '''
         Start by getting the latest commits to repo2docker
-        and BinderHub, and the live SHAs in mybinder.org
+        and BinderHub, and the live SHAs in pangeo-binder
         '''
         self.get_new_commits()
 
@@ -28,8 +31,8 @@ class henchBotMyBinder:
         '''
         Main method to check/create upgrades
         '''
-        my_binder_prs = requests.get(REPO_API + 'pulls?state=open')
-        henchbot_prs = [x for x in my_binder_prs.json() if x['user']['login'] == 'henchbot']
+        my_binder_prs = session.get(REPO_API + 'pulls?state=open')
+        henchbot_prs = [x for x in my_binder_prs.json() if x['user']['login'] == 'pangeo-bot']
         self.check_fork_exists()
 
         if len(henchbot_prs) == 0 and self.fork_exists:
@@ -46,7 +49,7 @@ class henchBotMyBinder:
 
     def check_existing_prs(self, henchbot_prs, repo):
         '''
-        Check mybinder.org for existing henchbot PRs
+        Check pangeo-binder for existing henchbot PRs
         '''
         if not henchbot_prs:
             return False
@@ -60,20 +63,22 @@ class henchBotMyBinder:
             return False
 
 
+    # TODO - check what must be changed here
     def check_fork_exists(self):
         '''
         Check if a fork exists for henchbot already
         '''
-        res = requests.get('https://api.github.com/users/henchbot/repos')
-        self.fork_exists = bool([x for x in res.json() if x['name'] == 'mybinder.org-deploy'])
+        res = session.get('https://api.github.com/users/pangeo-bot/repos')
+        self.fork_exists = bool([x for x in res.json() if x['name'] == 'pangeo-binder'])
 
 
+    # TODO - check what must be changed here
     def remove_fork(self):
         '''
-        Remove a henchbot fork of mybinder.org
+        Remove a henchbot fork of pangeo-binder
         '''
-        res = requests.delete(
-            'https://api.github.com/repos/henchbot/mybinder.org-deploy',
+        res = session.delete(
+            'https://api.github.com/repos/pangeo-bot/pangeo-binder',
             headers={
                 'Authorization': 'token {}'.format(TOKEN)})
         self.fork_exists = False
@@ -82,32 +87,35 @@ class henchBotMyBinder:
 
     def make_fork(self):
         '''
-        Make a fork of the mybinder.org repo to henchbot
+        Make a fork of the pangeo-binder repo to henchbot
         '''
-        res = requests.post(REPO_API + 'forks',
+        res = session.post(REPO_API + 'forks',
             headers={'Authorization': 'token {}'.format(TOKEN)})
 
 
+    # TODO - check what must be changed here
     def clone_fork(self):
         '''
-        Clone henchbot's mybinder.org fork
+        Clone henchbot's pangeo-binder fork
         '''
         subprocess.check_call(
-            ['git', 'clone', 'https://github.com/henchbot/mybinder.org-deploy'])
+            ['git', 'clone', 'https://github.com/pangeo-bot/pangeo-binder'])
 
-
+        
+    # TODO - check what must be changed here
     def delete_old_branch(self, repo):
         '''
         Delete an old branch in the henchbot fork (if it was merged)
         '''
-        res = requests.get('https://api.github.com/repos/henchbot/mybinder.org-deploy/branches')
-        if repo+'_bump' in [x['name'] for x in res.json()]:
+        res = session.get('https://api.github.com/repos/pangeo-bot/pangeo-binder/branches')
+        if repo + '_bump' in [x['name'] for x in res.json()]:
             subprocess.check_call(
-                ['git', 'push', '--delete', 'origin', repo+'_bump'])
+                ['git', 'push', '--delete', 'origin', repo + '_bump'])
             subprocess.check_call(
-                ['git', 'branch', '-d', repo+'_bump'])
-
-
+                ['git', 'branch', '-d', repo + '_bump'])
+            
+            
+    # TODO - check what must be changed here
     def checkout_branch(self, existing_pr, repo):
         '''
         Checkout branch for the bump
@@ -116,7 +124,7 @@ class henchBotMyBinder:
             if self.fork_exists:  # fork exists for other repo and old branch for this repo
                 self.delete_old_branch()
                 subprocess.check_call(
-                    ['git', 'pull', 'https://github.com/jupyterhub/mybinder.org-deploy.git', 'master'])
+                    ['git', 'pull', 'https://github.com/pangeo-data/pangeo-binder.git', 'staging'])
             subprocess.check_call(
                 ['git', 'checkout', '-b', repo+'_bump'])
         else:
@@ -128,7 +136,7 @@ class henchBotMyBinder:
         '''
         Update the SHA to latest for r2d
         '''
-        with open('mybinder/values.yaml', 'r', encoding='utf8') as f:
+        with open('pangeo-binder/values.yaml', 'r', encoding='utf8') as f:
             values_yaml = f.read()
 
         if not existing_pr:
@@ -144,7 +152,7 @@ class henchBotMyBinder:
                 "jupyter/repo2docker:{}".format(
                     self.commit_info[upgrade]['latest']))   
 
-        fname = 'mybinder/values.yaml'
+        fname = 'pangeo-binder/values.yaml'
         with open(fname, 'w', encoding='utf8') as f:
             f.write(updated_yaml)
 
@@ -155,7 +163,7 @@ class henchBotMyBinder:
         '''
         Update the SHA to latest for bhub
         '''
-        with open('mybinder/requirements.yaml', 'r', encoding='utf8') as f:
+        with open('pangeo-binder/requirements.yaml', 'r', encoding='utf8') as f:
             requirements_yaml = f.read()
 
         if not existing_pr:
@@ -167,7 +175,7 @@ class henchBotMyBinder:
                 "version: 0.2.0-{}".format(existing_pr['prev_latest']),
                 "version: 0.2.0-{}".format(self.commit_info[upgrade]['latest']))    
 
-        fname = 'mybinder/requirements.yaml'
+        fname = 'pangeo-binder/requirements.yaml'
         with open(fname, 'w', encoding='utf8') as f:
             f.write(updated_yaml)
 
@@ -199,10 +207,10 @@ class henchBotMyBinder:
             commit_message = 'binderhub: https://github.com/jupyterhub/binderhub/compare/{}...{}'.format(
                 self.commit_info['binderhub']['live'], self.commit_info['binderhub']['latest'])
 
-        subprocess.check_call(['git', 'config', 'user.name', 'henchbot'])
-        subprocess.check_call(['git', 'config', 'user.email', 'henchbot.github@gmail.com'])
+        subprocess.check_call(['git', 'config', 'user.name', 'pangeo-bot'])
+        subprocess.check_call(['git', 'config', 'user.email', 'pangeo.bot@gmail.com'])
         subprocess.check_call(['git', 'commit', '-m', commit_message])
-        subprocess.check_call(['git', 'push', 'https://henchbot:{}@github.com/henchbot/mybinder.org-deploy'.format(TOKEN), repo+'_bump'])
+        subprocess.check_call(['git', 'push', 'https://pangeo-bot:{}@github.com/pangeo-bot/pangeo-binder'.format(TOKEN), repo+'_bump'])
 
 
     def upgrade_repo_commit(self, existing_pr, repo):
@@ -213,12 +221,12 @@ class henchBotMyBinder:
             self.make_fork()
         self.clone_fork()
 
-        os.chdir('mybinder.org-deploy')
+        os.chdir('pangeo-binder')
         self.checkout_branch(existing_pr, repo)
         files_changed = self.edit_files(repo, existing_pr)
         self.add_commit_push(files_changed, repo)
         os.chdir('..')
-        shutil.rmtree('mybinder.org-deploy')
+        shutil.rmtree('pangeo-binder')
 
         self.create_update_pr(repo, existing_pr)
 
@@ -229,18 +237,18 @@ class henchBotMyBinder:
         '''
         repo_api = compare_url.replace('github.com', 'api.github.com/repos')
         pr_api = repo_api.split('/compare/')[0] + '/pulls/'
-        res = requests.get(repo_api).json()
+        res = session.get(repo_api).json()
         commit_shas = [x['sha'] for x in res['commits']]
 
         associated_prs = ['Associated PRs:']
         for sha in commit_shas[::-1]:
-            res = requests.get('https://api.github.com/search/issues?q=sha:{}'.format(sha)).json()
+            res = session.get('https://api.github.com/search/issues?q=sha:{}'.format(sha)).json()
             if 'items' in res:
                 for i in res['items']:
                     formatted = '- {} [#{}]({})'.format(i['title'], i['number'], i['html_url'])
                     repo_owner = i['repository_url'].split('/')[-2]
                     try:
-                        merged_at = requests.get(pr_api + str(i['number'])).json()['merged_at']
+                        merged_at = session.get(pr_api + str(i['number'])).json()['merged_at']
                     except KeyError:
                         continue
                     if formatted not in associated_prs and repo_owner.startswith('jupyter') and merged_at:
@@ -282,24 +290,24 @@ class henchBotMyBinder:
                                           self.commit_info[repo]['live'],
                                           self.commit_info[repo]['latest']),
             'body': body,
-            'base': 'master',
-            'head': 'henchbot:{}_bump'.format(repo)}
-
+            'base': 'staging',
+            'head': 'pangeo-bot:{}_bump'.format(repo)}
+        
         if existing_pr:
-            res = requests.patch(REPO_API + 'pulls/{}'.format(existing_pr['number']),
+            res = session.patch(REPO_API + 'pulls/{}'.format(existing_pr['number']),
                 headers={'Authorization': 'token {}'.format(TOKEN)}, json=pr)
 
         else:
-            res = requests.post(REPO_API + 'pulls',
+            res = session.post(REPO_API + 'pulls',
                 headers={'Authorization': 'token {}'.format(TOKEN)}, json=pr)
 
 
     def get_binderhub_live(self):
         '''
-        Get the live BinderHub SHA from mybinder.org
+        Get the live BinderHub SHA from pangeo-binder
         '''
         # Load master requirements
-        url_requirements = "https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/requirements.yaml"
+        url_requirements = "https://raw.githubusercontent.com/pangeo-data/pangeo-binder/staging/pangeo-binder/requirements.yaml"
         requirements = load(requests.get(url_requirements).text)
         binderhub_dep = [ii for ii in requirements[
             'dependencies'] if ii['name'] == 'binderhub'][0]
@@ -309,10 +317,11 @@ class henchBotMyBinder:
 
     def get_jupyterhub_live(self):
         '''
-        Get the live JupyterHub SHA from mybinder.org
+        Get the live JupyterHub SHA from pangeo-binder
         '''
-        url_binderhub_requirements = "https://raw.githubusercontent.com/jupyterhub/binderhub/{}/helm-chart/binderhub/requirements.yaml".format(
-            self.commit_info['binderhub']['live'])
+        url_binderhub_requirements = "https://raw.githubusercontent.com/pangeo-data/helm-chart/master/pangeo/requirements.yaml"
+        #.format(self.commit_info['binderhub']['live'])
+        print(url_binderhub_requirements)
         requirements = load(requests.get(url_binderhub_requirements).text)
         jupyterhub_dep = [ii for ii in requirements[
             'dependencies'] if ii['name'] == 'jupyterhub'][0]
@@ -322,10 +331,10 @@ class henchBotMyBinder:
 
     def get_repo2docker_live(self):
         '''
-        Get the live r2d SHA from mybinder.org
+        Get the live r2d SHA from pangeo-binder
         '''
         # Load master repo2docker
-        url_helm_chart = "https://raw.githubusercontent.com/jupyterhub/mybinder.org-deploy/master/mybinder/values.yaml"
+        url_helm_chart = "https://raw.githubusercontent.com/pangeo-data/pangeo-binder/staging/pangeo-binder/values.yaml"
         helm_chart = requests.get(url_helm_chart)
         helm_chart = load(helm_chart.text)
         r2d_live = helm_chart['binderhub']['config'][
